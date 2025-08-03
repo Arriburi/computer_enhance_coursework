@@ -7,73 +7,114 @@
 #bits 16
 
 #mov cx, bx
-
 from enum import Enum
 
 class Opcode(Enum):
     MOV = 0b100010
 
-class Registers0(Enum): ## if W = 0
-    AL = 0b000
-    CL = 0b001
-    DL = 0b010
-    BL = 0b011
-    AH = 0b100
-    CH = 0b101
-    DH = 0b110
-    BH = 0b111
+reg8bit = ['AL', 'CL', 'DL', 'BL', 'AH', 'CH', 'DH', 'BH'] ## if W = 0
 
-class Registers1(Enum): # if W = 1
-    AX = 0b000
-    CX = 0b001
-    DX = 0b010
-    BX = 0b011
-    SP = 0b100
-    BP = 0b101
-    SI = 0b110
-    DI = 0b111
+reg16bit = ['AX', 'CX', 'DX', 'BX', 'SP', 'BP', 'SI', 'DI'] ## if W = 1
 
-
-def decode(binary_chunk: str):
+#def reg_to_reg(mode:int, reg:int, rm:int):
+#    bytes_consumed = 0
+#    return bytes_consumed
     
-    opcode = binary_chunk[0:6]      ## type of instruction
-    direction = binary_chunk[6]     ## register destination/source
-    word = binary_chunk[7]          ## 8 bits or 16 bits
-    mode = binary_chunk[8:10]       ## 11 register to register
-    reg = binary_chunk[10:13]       ## register source/destination
-    regmem = binary_chunk[13:16]    ## register source/destination
+def memreg_to_reg(file:bytes, index : int, word:int):
+    bytes_consumed = 1
+    second_byte = file[index + 1]
+    bytes_consumed += 1
 
-   ## print(f"OPCODE={opcode} D={direction} W={word} MOD={mode} REG={reg} RM={regmem}")
+    mode = (second_byte >> 6) & 0b11
+    reg = (second_byte >> 3) & 0b111  
+    rm = second_byte & 0b111 
 
-    if word == '0': 
-        to_copy = binary_chunk[:8] ## BYTE
-        registers = Registers0
-    else:
-        to_copy = binary_chunk ## WORD
-        registers = Registers1
+    match mode:
+        case 0b00:
+            print("No displacement except if R/M = 110 then 16-bit displacement")
+        case 0b01:
+            print("Memory Mode, 8-bit")
+        case 0b10:
+            print("Memory mode, 16-bit")
+        case 0b11:
+            print("Register Mode, no displacement")
+            if word:
+                source = reg16bit[reg]
+                destination = reg16bit[rm]
+            else:
+                source = reg8bit[reg]
+                destination = reg8bit[rm]
+        case _: 
+            print("something went wrong")
 
-    if direction == '0': ## 0 Instruction source is specified in REG field 
-        destination = registers(int(regmem, 2)).name
-        source = registers(int(reg, 2)).name
-    else: 
-        destination = registers(int(reg, 2)).name
-        source = registers(int(regmem, 2)).name    
+    return  source, destination, bytes_consumed
 
-    opcode_val = int(opcode, 2)
-    instruction = Opcode(opcode_val)   
+def reg_to_memreg(file:bytes, index : int, word:int):
+    bytes_consumed = 1
+    second_byte = file[index + 1]
+    bytes_consumed += 1
 
-    print(instruction.name,  destination + ",", source)
-  
+    mode = (second_byte >> 6) & 0b11
+    reg = (second_byte >> 3) & 0b111  
+    rm = second_byte & 0b111 
 
+    match mode:
+        case 0b00:
+            print("No displacement except if R/M = 110 then 16-bit displacement")
+        case 0b01:
+            print("Memory Mode, 8-bit")
+        case 0b10:
+            print("Memory mode, 16-bit")
+        case 0b11:
+            print("Register Mode, no displacement")
+            if word:
+                source = reg16bit[rm] 
+                destination = reg16bit[reg]
+            else:
+                source = reg8bit[rm]
+                destination = reg8bit[reg]
+        case _: 
+            print("something went wrong")
+
+    return  source, destination, bytes_consumed
+
+
+def parser(file_name: str):
+    with open(file_name, 'rb') as f:
+        file = f.read()
+    index = 0 
+    while index < len(file):
+        chunk = file[index] 
+        opcode = (chunk >> 2) & 0b111111      
+        direction = (chunk >> 1) & 0b1 
+        word = chunk & 0b1 
+        print(f"Byte value: {chunk}, Binary: {chunk:08b}")
+
+        match opcode, direction:
+            case 0b100010, 1:
+                print("MOV Memory/Register to Register")
+                source, destination, bytes_consumed = memreg_to_reg(file, index, word)
+                index += bytes_consumed
+            case 0b100010, 0:
+                print("MOV Register to Memory/Register")
+                source, destination, bytes_consumed = reg_to_memreg(file, index, word)
+                index += bytes_consumed
+            case 0b1100011, _:
+                print("MOV immediate to register/memory")
+                index += 1 
+            case 0b1011, _:
+                print("MOV immediate to register")
+                index += 1  
+            case _:
+                break
+        print(Opcode(opcode).name, source, destination)
     return 1
 
-size = 2
-with open('listing_0038_many_register_mov', 'rb') as file:
-    while True:
-        chunk = file.read(size)
-        if not chunk:
-            break
-        binary_chunk = bin(int.from_bytes(chunk))[2:]
-        decode(binary_chunk)
 
-
+if __name__=="__main__":
+    size = 1
+    listing37 = 'listing_0037_single_register_mov'
+    listing38 = 'listing_0038_many_register_mov'
+    listing39 = 'listing_0039_more_movs'
+    file_name = listing38
+    parser(file_name)
