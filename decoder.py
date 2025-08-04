@@ -26,10 +26,6 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
     second_byte = file[index + 1]
     bytes_consumed += 1
 
-    third_byte = file[index + 2]
-    fourth_byte = file[index + 3]
-    displacement = third_byte | (fourth_byte << 8)
-
     mode = (second_byte >> 6) & 0b11
     reg = (second_byte >> 3) & 0b111  
     rm = second_byte & 0b111 
@@ -38,15 +34,24 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
 
     match mode:
         case 0b00: # No displacement except if R/M = 110 then 16-bit displacement
-            if rm == 0b110:  
+            if rm == 0b110:
+                third_byte = file[index + 2]
+                fourth_byte = file[index + 3]
+                displacement = third_byte | (fourth_byte << 8)
                 rm_operand = f"[{displacement}]"
                 bytes_consumed += 2
             else:
                 rm_operand = f"[{effective_addr[rm]}]"
         case 0b01: #Memory Mode, 8-bit
+            print("Memory mode 8-bit")
+            third_byte = file[index + 2]
             rm_operand = f"[{effective_addr[rm]} + {third_byte}]"
             bytes_consumed += 1
         case 0b10: # Memory Mode, 16-bit
+            print("Memory mode 16-bit")
+            third_byte = file[index + 2]
+            fourth_byte = file[index + 3]
+            displacement = third_byte | (fourth_byte << 8)
             rm_operand = f"[{effective_addr[rm]} + {displacement}]"
             bytes_consumed += 2
         case 0b11: # Register Mode, no displacement
@@ -62,7 +67,7 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
         destination = rm_operand
     
     
-    return source, destination, bytes_consumed
+    return destination, source, bytes_consumed
 
 
 def parser(file_name: str):
@@ -71,26 +76,39 @@ def parser(file_name: str):
     index = 0 
     while index < len(file):
         chunk = file[index]
-        opcode = (chunk >> 2) & 0b111111      
+        opcode = "MOV"    
         direction = (chunk >> 1) & 0b1 
         word = chunk & 0b1 
         print(f"Binary: {chunk:08b}")
 
         if (chunk & 0b11111100) == 0b10001000: ## 100010
-                print("matched MOV")
-                source, destination, bytes_consumed = process_mov_instruction(file, index, word, direction)
-                index += bytes_consumed
+            print("matched MOV")
+            destination, source, bytes_consumed = process_mov_instruction(file, index, word, direction)
+            index += bytes_consumed
         elif (chunk & 0b11111110) == 0b11000110:    ## 1100011x  
-            print("MOV immediate to reg/mem")
+            print("matched MOV immediate to reg/mem")
             break
         elif (chunk & 0b11110000) == 0b10110000:    ## 1011xxxx
-            print("MOV immediate to reg")
-            break
+            print("matched MOV immediate to reg")
+            word = (chunk >> 3) & 0b1
+            reg = chunk & 0b111
+            destination = reg16bit[reg] if word else reg8bit[reg]
+
+            if word:  
+                second_byte = file[index + 1]
+                third_byte = file[index + 2]
+                source = second_byte | (third_byte << 8)
+                index += 3  
+            else:     
+                second_byte = file[index + 1]
+                source = second_byte
+                index += 2 
         else:
             print("Unknown instruction")
             break
 
-        print(Opcode(opcode).name, source, destination)
+        print(opcode, str(destination) +",", str(source))
+
     return 1
 
 
