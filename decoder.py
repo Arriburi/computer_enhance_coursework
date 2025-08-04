@@ -1,25 +1,7 @@
-## BYTE          BYTE 
-## 6, 1, 1       2, 3, 3
-## [101010|D|W]  [MOD|REG|R/M]
-## OPCODE | DIRECTION | BYTE OR WORD
-## MODE (should always be 11 for reg to reg for now) | REGISTER  | REGISTER / MEMORY
-
-#bits 16
-
-#mov cx, bx
-from enum import Enum
-
-class Opcode(Enum):
-    MOV = 0b100010
 
 reg8bit = ['AL', 'CL', 'DL', 'BL', 'AH', 'CH', 'DH', 'BH'] ## if W = 0
 reg16bit = ['AX', 'CX', 'DX', 'BX', 'SP', 'BP', 'SI', 'DI'] ## if W = 1
 effective_addr = ['BX + SI', 'BX + DI', 'BP + SI', 'BP + DI', 'SI', 'DI', 'BP', 'BX']
-
-
-#def reg_to_reg(mode:int, reg:int, rm:int):
-#    bytes_consumed = 0
-#    return bytes_consumed
     
 def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
     bytes_consumed = 1
@@ -66,9 +48,7 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
         source = reg_operand
         destination = rm_operand
     
-    
     return destination, source, bytes_consumed
-
 
 def parser(file_name: str):
     with open(file_name, 'rb') as f:
@@ -108,9 +88,7 @@ def parser(file_name: str):
             break
 
         print(opcode, str(destination) +",", str(source))
-
     return 1
-
 
 if __name__=="__main__":
     size = 1
