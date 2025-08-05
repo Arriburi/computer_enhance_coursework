@@ -4,29 +4,49 @@ reg8bit = ['AL', 'CL', 'DL', 'BL', 'AH', 'CH', 'DH', 'BH'] ## if W = 0
 reg16bit = ['AX', 'CX', 'DX', 'BX', 'SP', 'BP', 'SI', 'DI'] ## if W = 1
 effective_addr = ['BX + SI', 'BX + DI', 'BP + SI', 'BP + DI', 'SI', 'DI', 'BP', 'BX']
 
+jumps = {
+    0b01110101: 'JNZ',
+    0b01110100: 'JE',
+    0b01111100: 'JL',
+    0b01111110: 'JLE',
+    0b01110010: 'JB',
+    0b01110110: 'JBE',
+    0b01111010: 'JP',
+    0b01110000: 'JO',
+    0b01111000: 'JS',
+    0b01111101: 'JNL',
+    0b01111111: 'JG',
+    0b01110011: 'JNB',
+    0b01110111: 'JA',
+    0b01111011: 'JNP',
+    0b01110001: 'JNO',
+    0b01111001: 'JNS'
+}
 
 opcodes = {
-    0b100010: "MOV",
-    0b1100011: "MOV",
-    0b1011: "MOV",
-    0b000000: "ADD",
-    0b100000: "ADD",
-    0b0000010: "ADD",
-    0b001010: "SUB",
-    0b100000: "SUB",
-    0b0010110: "SUB",
-    0b001110: "CMP",
-    0b100000: "CMP",
-    0b0011110: "CMP"
+    0b100010: ("MOV", 6),
+    0b1100011: ("MOV", 7),
+    0b1011: ("MOV", 4),
+    0b000000: ("ADD1", 6),
+    0b100000: ("SPECIAL", 6),
+    0b0000010: ("ADD2", 7),
+    0b001010: ("SUB1", 6),
+    0b0010110: ("SUB2", 7),
+    0b001110: ("CMP", 6),
+    0b0011110: ("CMP", 7)
 }
 
 def match_opcode(byte:int):
-    for pattern, instruction in opcodes.items():
-        pattern_length = pattern.bit_length()
+    for pattern, (instruction, pattern_length) in opcodes.items():
         mask = (1 << pattern_length) - 1
         extracted_bits = (byte >> (8 - pattern_length)) & mask
+        
         if extracted_bits == pattern:
             return pattern, instruction
+    
+    for jump_pattern, jump_instruction in jumps.items():
+        if byte == jump_pattern:
+            return jump_pattern, jump_instruction
     
     return None, None
 
@@ -78,13 +98,23 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
     
     return destination, source, bytes_consumed
 
-def immediate_to_registermemory(file: bytes, index: int, word:int):
-
+def immediate_to_registermemory(file: bytes, index: int, word:int, pattern: int):
     bytes_consumed = 1
     second_byte = file[index + 1]
     bytes_consumed += 1
     mode = (second_byte >> 6) & 0b11
-    rm = second_byte & 0b111 
+    rm = second_byte & 0b111    
+    reg = (second_byte >> 3) & 0b111
+    instruction = 'ERROR'
+
+    if pattern == 0b1100011 and reg == 0b000:
+        instruction = 'MOV' 
+    elif reg == 0b000:
+        instruction = 'ADD'
+    elif reg == 0b101:
+        instruction = 'SUB'
+    elif reg == 0b111:  
+        instruction = 'CMP'
 
     match mode:
         case 0b00: # No displacement except if R/M = 110 then 16-bit displacement
@@ -112,23 +142,36 @@ def immediate_to_registermemory(file: bytes, index: int, word:int):
             print("something went wrong")
             destination = 0
     
-    if word:  
+    if pattern == 0b100000:  # Only ADD, SUB, CMP have 's' bit
+            
+        s = (file[index] >> 1) & 0b1
+        if s == 1 and word == 1:
+            imm8 = file[index + bytes_consumed]
+            if imm8 & 0b10000000:
+                source = imm8 | 0b1111111100000000
+            else:
+                source = imm8
+            bytes_consumed += 1
+            return instruction, destination, source, bytes_consumed  
+
+    if word == 1:
         low_byte = file[index + bytes_consumed]
         high_byte = file[index + bytes_consumed + 1]
-        source = low_byte | (high_byte << 8)  
+        source = low_byte | (high_byte << 8)
         bytes_consumed += 2
-    else:    
+    else:
         source = file[index + bytes_consumed]
         bytes_consumed += 1
-    
-    return destination, source, bytes_consumed
 
-def immediate_to_register(file: bytes, index: int, word:int):
+    return instruction, destination, source, bytes_consumed
+
+
+def immediate_to_register(file: bytes, index: int, word:int, pattern: int):
     chunk = file[index]
     reg = chunk & 0b111        
     
     destination = reg16bit[reg] if word else reg8bit[reg]
-    
+
     if word:  
         second_byte = file[index + 1]
         third_byte = file[index + 2]
@@ -139,6 +182,44 @@ def immediate_to_register(file: bytes, index: int, word:int):
         source = second_byte
         bytes_consumed = 2 
     
+    return destination, source, bytes_consumed
+
+def immediate_accumulator(file: bytes, index: int, word:int, pattern: int):
+    bytes_consumed = 0
+    destination = 'mistake in defining destination for immediate accumulator'
+    source = 'mistake in defining source for immediate accumulator'
+    if pattern == 0b0000010: #Immediate to accumulator
+        if word:
+            destination = 'AX'
+            second_byte = file[index + 1]
+            third_byte = file[index + 2]
+            source = second_byte | (third_byte << 8)  
+            bytes_consumed = 3  
+        else:
+            destination = 'AL'
+            second_byte = file[index + 1]
+            bytes_consumed = 2 
+    elif pattern == 0b0010110: #Immediate from accumulator
+        if word:
+            destination = 'AX'
+            second_byte = file[index + 1]
+            third_byte = file[index + 2]
+            source = second_byte | (third_byte << 8)  
+            bytes_consumed = 3  
+        else:
+            destination = 'AL'
+            second_byte = file[index + 1]
+            bytes_consumed = 2
+    elif pattern == 0b0011110: #Immediate with accumulator
+        if word:
+            destination = 'AX'
+            second_byte = file[index + 1]
+            bytes_consumed = 2
+        else:
+            destination = 'AL'
+            second_byte = file[index + 1]
+            bytes_consumed = 2
+
     return destination, source, bytes_consumed
 
 def parser(file_name: str):
@@ -152,24 +233,35 @@ def parser(file_name: str):
         word = chunk & 0b1 
         #print(f"Binary: {chunk:08b}")
 
+        if pattern is None:
+            print("Unknown instruction")
+            index += 1
+            continue
+
         if pattern in (0b100010, 0b000000, 0b001010, 0b001110): ## 100010
             #print("matched: First row")
             destination, source, bytes_consumed = process_mov_instruction(file, index, word, direction)
             index += bytes_consumed
         elif pattern in (0b1100011, 0b100000):
             #print("matched: Second row")
-            destination, source, bytes_consumed = immediate_to_registermemory(file, index, word)
+            instruction, destination, source, bytes_consumed = immediate_to_registermemory(file, index, word, pattern)
             index += bytes_consumed
         elif pattern in (0b1011, 0b0000010, 0b0010110, 0b0011110):
-            destination, source, bytes_consumed = immediate_to_registermemory(file, index, word)
+            instruction, destination, source, bytes_consumed = immediate_to_registermemory(file, index, word, pattern)
             index += bytes_consumed
+        elif pattern in (0b0000010, 0b0010110, 0b0011110):
+            instruction, destination, source, bytes_consumed = immediate_accumulator(file, index, word, pattern)
+            index += bytes_consumed
+        elif pattern in jumps:
+            # Handle jump instructions
+            instruction = jumps[pattern] 
+            destination = file[index+1]
+            source = ""
+            index += 2
         else:
-            #print("Unknown instruction")
-            break
-
-
-
-
+            print("Unknown instruction")
+            index += 1
+        
         print(instruction, str(destination) +",", str(source))
     return 1
 
@@ -179,5 +271,5 @@ if __name__=="__main__":
     listing38 = 'listing_0038_many_register_mov'
     listing39 = 'listing_0039_more_movs'
     listing41 = 'listing_0041_add_sub_cmp_jnz'
-    file_name = listing39
+    file_name = listing41
     parser(file_name)
