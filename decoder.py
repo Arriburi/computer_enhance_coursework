@@ -282,9 +282,13 @@ def parser(file_name: str):
             destination, source, bytes_consumed = immediate_accumulator(file, index, word, pattern)
             index += bytes_consumed
         elif pattern in jumps:
-            # Handle jump instructions
             instruction = jumps[pattern] 
-            destination = file[index+1]
+            displacement_byte = file[index+1]
+            # Convert to signed 8-bit value
+            if displacement_byte & 0x80:  # If negative (sign bit set)
+                destination = displacement_byte - 256
+            else:
+                destination = displacement_byte
             source = ""
             index += 2
         else:
