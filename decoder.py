@@ -20,18 +20,22 @@ jumps = {
     0b01110111: 'JA',
     0b01111011: 'JNP',
     0b01110001: 'JNO',
-    0b01111001: 'JNS'
+    0b01111001: 'JNS',
+    0b11100010: 'LOOP',
+    0b11100001: 'LOOPZ',
+    0b11100000: 'LOOPNZ',
+    0b11100011: 'JCXZ'
 }
 
 opcodes = {
     0b100010: ("MOV", 6),
     0b1100011: ("MOV", 7),
     0b1011: ("MOV", 4),
-    0b000000: ("ADD1", 6),
+    0b000000: ("ADD", 6),
     0b100000: ("SPECIAL", 6),
-    0b0000010: ("ADD2", 7),
-    0b001010: ("SUB1", 6),
-    0b0010110: ("SUB2", 7),
+    0b0000010: ("ADD", 7),
+    0b001010: ("SUB", 6),
+    0b0010110: ("SUB", 7),
     0b001110: ("CMP", 6),
     0b0011110: ("CMP", 7)
 }
@@ -99,6 +103,7 @@ def process_mov_instruction(file:bytes, index : int, word:int, direction: int):
     return destination, source, bytes_consumed
 
 def immediate_to_registermemory(file: bytes, index: int, word:int, pattern: int):
+    w = ""
     bytes_consumed = 1
     second_byte = file[index + 1]
     bytes_consumed += 1
@@ -143,7 +148,6 @@ def immediate_to_registermemory(file: bytes, index: int, word:int, pattern: int)
             destination = 0
     
     if pattern == 0b100000:  # Only ADD, SUB, CMP have 's' bit
-            
         s = (file[index] >> 1) & 0b1
         if s == 1 and word == 1:
             imm8 = file[index + bytes_consumed]
@@ -151,8 +155,14 @@ def immediate_to_registermemory(file: bytes, index: int, word:int, pattern: int)
                 source = imm8 | 0b1111111100000000
             else:
                 source = imm8
-            bytes_consumed += 1
-            return instruction, destination, source, bytes_consumed  
+            bytes_consumed += 1  # ← Fixed: moved outside the if/else
+            
+            # Apply the same prefix logic here too
+            if '[' in str(destination) and ']' in str(destination):
+                w = "word "
+            else:
+                w = ""
+            return instruction, w + str(destination), source, bytes_consumed  
 
     if word == 1:
         low_byte = file[index + bytes_consumed]
@@ -163,7 +173,15 @@ def immediate_to_registermemory(file: bytes, index: int, word:int, pattern: int)
         source = file[index + bytes_consumed]
         bytes_consumed += 1
 
-    return instruction, destination, source, bytes_consumed
+    if '[' in str(destination) and ']' in str(destination):
+        if word == 1:
+            w = "word "
+        else:
+            w = "byte "
+    else:
+        w = ""  # No prefix for register destinations
+
+    return instruction, w + str(destination), source, bytes_consumed
 
 
 def immediate_to_register(file: bytes, index: int, word:int, pattern: int):
@@ -198,6 +216,7 @@ def immediate_accumulator(file: bytes, index: int, word:int, pattern: int):
         else:
             destination = 'AL'
             second_byte = file[index + 1]
+            source = second_byte
             bytes_consumed = 2 
     elif pattern == 0b0010110: #Immediate from accumulator
         if word:
@@ -209,15 +228,34 @@ def immediate_accumulator(file: bytes, index: int, word:int, pattern: int):
         else:
             destination = 'AL'
             second_byte = file[index + 1]
+            source = second_byte
             bytes_consumed = 2
     elif pattern == 0b0011110: #Immediate with accumulator
         if word:
             destination = 'AX'
             second_byte = file[index + 1]
-            bytes_consumed = 2
+            third_byte = file[index + 2]
+            source = second_byte | (third_byte << 8)  
+            bytes_consumed = 3  
         else:
             destination = 'AL'
             second_byte = file[index + 1]
+            source = second_byte
+            bytes_consumed = 2
+    elif pattern == 0b1011:
+        byte = file[index]
+        word = (byte >> 3) & 0b1
+        reg = byte & 0b111
+        if word:
+            destination = reg
+            second_byte = file[index + 1]
+            third_byte = file[index + 2]
+            source = second_byte | (third_byte << 8)  
+            bytes_consumed = 3  
+        else:
+            destination = reg
+            second_byte = file[index + 1]
+            source = second_byte
             bytes_consumed = 2
 
     return destination, source, bytes_consumed
@@ -233,24 +271,15 @@ def parser(file_name: str):
         word = chunk & 0b1 
         #print(f"Binary: {chunk:08b}")
 
-        if pattern is None:
-            print("Unknown instruction")
-            index += 1
-            continue
-
-        if pattern in (0b100010, 0b000000, 0b001010, 0b001110): ## 100010
-            #print("matched: First row")
+        if pattern in (0b100010, 0b000000, 0b001010, 0b001110):
             destination, source, bytes_consumed = process_mov_instruction(file, index, word, direction)
             index += bytes_consumed
         elif pattern in (0b1100011, 0b100000):
             #print("matched: Second row")
             instruction, destination, source, bytes_consumed = immediate_to_registermemory(file, index, word, pattern)
             index += bytes_consumed
-        elif pattern in (0b1011, 0b0000010, 0b0010110, 0b0011110):
-            instruction, destination, source, bytes_consumed = immediate_to_registermemory(file, index, word, pattern)
-            index += bytes_consumed
-        elif pattern in (0b0000010, 0b0010110, 0b0011110):
-            instruction, destination, source, bytes_consumed = immediate_accumulator(file, index, word, pattern)
+        elif pattern in (0b0000010, 0b0010110, 0b0011110, 0b1011):
+            destination, source, bytes_consumed = immediate_accumulator(file, index, word, pattern)
             index += bytes_consumed
         elif pattern in jumps:
             # Handle jump instructions
@@ -259,10 +288,13 @@ def parser(file_name: str):
             source = ""
             index += 2
         else:
-            print("Unknown instruction")
+            print("Unknown instruction2")
             index += 1
-        
-        print(instruction, str(destination) +",", str(source))
+
+        if str(source):  
+            print(instruction, str(destination) +",", str(source))
+        else: 
+            print(instruction, str(destination))
     return 1
 
 if __name__=="__main__":
