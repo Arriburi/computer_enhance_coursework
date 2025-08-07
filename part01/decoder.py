@@ -261,6 +261,8 @@ def immediate_accumulator(file: bytes, index: int, word:int, pattern: int):
     return destination, source, bytes_consumed
 
 def parser(file_name: str):
+    instructions = []
+
     with open(file_name, 'rb') as f:
         file = f.read()
     index = 0 
@@ -295,17 +297,32 @@ def parser(file_name: str):
             print("Unknown instruction2")
             index += 1
 
-        if str(source):  
-            print(instruction, str(destination) +",", str(source))
-        else: 
-            print(instruction, str(destination))
-    return 1
+        if str(source):
+            instructions.append({
+                'operation': instruction,
+                'destination': str(destination),
+                'source': source
+            })
+        else:
+            instructions.append({
+                'operation': instruction, 
+                'destination': str(destination),
+                'source': None
+            })
+    return instructions
+
+listing37 = 'listing_0037_single_register_mov'
+listing38 = 'listing_0038_many_register_mov'
+listing39 = 'listing_0039_more_movs'
+listing41 = 'listing_0041_add_sub_cmp_jnz'
+
+def get_instructions(file_name: str):
+    instructions = parser(file_name)
+    return instructions
 
 if __name__=="__main__":
-    size = 1
-    listing37 = 'listing_0037_single_register_mov'
-    listing38 = 'listing_0038_many_register_mov'
-    listing39 = 'listing_0039_more_movs'
-    listing41 = 'listing_0041_add_sub_cmp_jnz'
+    
     file_name = listing41
-    parser(file_name)
+    instructions =  get_instructions(listing41)
+    print(instructions)
+
