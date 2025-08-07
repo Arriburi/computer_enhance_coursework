@@ -247,13 +247,13 @@ def immediate_accumulator(file: bytes, index: int, word:int, pattern: int):
         word = (byte >> 3) & 0b1
         reg = byte & 0b111
         if word:
-            destination = reg
+            destination = reg16bit[reg]
             second_byte = file[index + 1]
             third_byte = file[index + 2]
             source = second_byte | (third_byte << 8)  
             bytes_consumed = 3  
         else:
-            destination = reg
+            destination = reg8bit[reg]
             second_byte = file[index + 1]
             source = second_byte
             bytes_consumed = 2
@@ -316,13 +316,20 @@ listing38 = 'listing_0038_many_register_mov'
 listing39 = 'listing_0039_more_movs'
 listing41 = 'listing_0041_add_sub_cmp_jnz'
 
+listing43 = 'listing_0043_immediate_movs'
+
+
+
 def get_instructions(file_name: str):
     instructions = parser(file_name)
     return instructions
 
 if __name__=="__main__":
     
-    file_name = listing41
-    instructions =  get_instructions(listing41)
-    print(instructions)
+    listing = listing43
+
+    instructions =  get_instructions(listing)
+    print("Printing" + listing)
+    for instr in instructions:
+        print(instr)
 

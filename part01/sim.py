@@ -1,9 +1,10 @@
 from decoder import get_instructions
 
 if __name__ == "__main__":
-    file_name = 'listing_0041_add_sub_cmp_jnz'
-    instructions = get_instructions(file_name)
+    file_name = 'listing_0043_immediate_movs'
+    instructions = get_instructions(file_name) # type: ignore
     print("We are simulating")
+    print(instructions)
 
 
 registers = {
@@ -16,5 +17,6 @@ registers = {
     'SI': 0x0000,
     'DI': 0x0000
 }
+
 
 
